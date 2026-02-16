@@ -1,0 +1,1 @@
+pyinstaller --onefile --name "Delta" --noconsole --noconfirm --icon="img/logo-light.png" --add-data "img;img" --exclude-module PyQt5 --exclude-module PyQt6 --exclude-module PySide2 __main__.py
