@@ -100,9 +100,7 @@ class DeltaApp(QMainWindow):
         
         scroll_layout.addStretch()
         scroll_area.setWidget(scroll_content)
-        
         hash_layout.addWidget(scroll_area)
-        hash_layout.addStretch()
 
         self.drop_zone.file_ready.connect(self.process_file)
 

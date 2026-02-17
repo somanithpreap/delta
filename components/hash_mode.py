@@ -10,8 +10,8 @@ class DropZone(QLabel):
         self.setAcceptDrops(True)
         self.setCursor(Qt.PointingHandCursor) # Changes mouse to a hand on hover
         
-        self.default_style = "border: 2px dashed #888; border-radius: 10px; font-size: 18px; padding: 40px; color: #aaa;"
-        self.hover_style = "border: 2px dashed #4db6ac; border-radius: 10px; font-size: 18px; padding: 40px; color: #4db6ac; background-color: #1e2b2c;"
+        self.default_style = "border: 2px dashed #888; border-radius: 10px; font-size: 18px; margin-top: 10px; padding: 40px; color: #aaa;"
+        self.hover_style = "border: 2px dashed #4db6ac; border-radius: 10px; font-size: 18px; margin-top: 10px; padding: 40px; color: #4db6ac; background-color: #1e2b2c;"
         self.setStyleSheet(self.default_style)
 
     def dragEnterEvent(self, event):
