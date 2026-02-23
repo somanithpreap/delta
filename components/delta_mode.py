@@ -7,7 +7,8 @@ class FileDropZone(QLabel):
         super().__init__(parent)
         self.setFrameStyle(QFrame.StyledPanel | QFrame.Plain)
         self.setAlignment(Qt.AlignCenter)
-        self.setText("Drag & Drop File Here\nor\nClick to Select")
+        self.setWordWrap(True)
+        self.setText("Drag & drop a file here (or click to browse)")
         self.setAcceptDrops(True)
         self.setStyleSheet("""
             FileDropZone {
@@ -121,6 +122,7 @@ class FileView(QWidget):
 
     def set_file(self, file_path):
         self.file_path = file_path
+        self.drop_zone.setText(file_path) # Update drop zone text
         self.hash_output.setText("Loading...")
         self.hex_view.setText("Loading...")
 

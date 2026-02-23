@@ -5,7 +5,7 @@ class DropZone(QLabel):
     file_ready = Signal(str) 
 
     def __init__(self):
-        super().__init__("Drag & Drop a file here\n(or click to browse)")
+        super().__init__("Drag & drop a file here\n(or click to browse)")
         self.setAlignment(Qt.AlignCenter)
         self.setAcceptDrops(True)
         self.setCursor(Qt.PointingHandCursor) # Changes mouse to a hand on hover

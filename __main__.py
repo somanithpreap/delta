@@ -154,6 +154,7 @@ class DeltaApp(QMainWindow):
 
         self.compare_button = QPushButton("Compare Files")
         self.compare_button.clicked.connect(self.start_comparison)
+        self.compare_button.setEnabled(False) # Disabled until files are loaded
         self.compare_button.setCursor(Qt.PointingHandCursor)
         delta_layout.addWidget(self.compare_button)
 
