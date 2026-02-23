@@ -24,9 +24,15 @@ class HashWorker(QObject):
         hashers = {algo: hashlib.new(algo) for algo in self.algorithms}
         try:
             with open(self.file_path, "rb") as f:
-                while byte_block := f.read(65536):
-                    for hasher in hashers.values():
-                        hasher.update(byte_block)
+                # Use a memory-mapped file for efficiency
+                with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                    # Read in chunks to avoid holding large chunks in memory
+                    chunk_size = 65536
+                    for i in range(0, len(mm), chunk_size):
+                        chunk = mm[i:i+chunk_size]
+                        for hasher in hashers.values():
+                            hasher.update(chunk)
+
             results = {algo: hasher.hexdigest() for algo, hasher in hashers.items()}
             self.finished.emit(results)
         except Exception as e:
@@ -187,12 +193,27 @@ class DeltaApp(QMainWindow):
         # Compare hashes and update colors
         hash1 = self.file1_view.hash_output.text()
         hash2 = self.file2_view.hash_output.text()
+        file1_data = self.file1_view.file_data
+        file2_data = self.file2_view.file_data
+        limit = 1024 * 1024 # 1 MiB
 
         primary_color = self.palette().color(QPalette.ColorRole.Highlight).name()
         
         default_stylesheet = f"padding: 5px; color: #aaa;"
         match_stylesheet = f"padding: 5px; color: {primary_color};"
         mismatch_stylesheet = "padding: 5px; color: red;"
+
+        # Enable/disable compare button based on file size
+        button_enabled = True
+        if (file1_data and len(file1_data) > limit) or \
+           (file2_data and len(file2_data) > limit):
+            button_enabled = False
+        
+        # The button should only be active if both files are loaded.
+        if not file1_data or not file2_data:
+            button_enabled = False
+
+        self.compare_button.setEnabled(button_enabled)
 
         if hash1 and hash2:
             if hash1 == hash2:

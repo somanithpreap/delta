@@ -1,4 +1,4 @@
-import hashlib
+import hashlib, mmap, html
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QFileDialog, QFrame, QSplitter, QLineEdit)
 from PySide6.QtCore import Qt, QThread, QObject, Signal, QThreadPool, QRunnable
 
@@ -47,9 +47,10 @@ class Worker(QObject):
     def run(self):
         try:
             with open(self.file_path, 'rb') as f:
-                file_data = f.read()
-            sha256_hash = hashlib.sha256(file_data).hexdigest()
-            self.finished.emit((file_data, sha256_hash))
+                # Use memory-mapping for large file efficiency
+                mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+            sha256_hash = hashlib.sha256(mm).hexdigest()
+            self.finished.emit((mm, sha256_hash))
         except Exception as e:
             self.finished.emit(e)
 
@@ -185,6 +186,11 @@ class FileView(QWidget):
         if not self.file_data:
             return
 
+        # Limit display for very large files to prevent MemoryError
+        if len(self.file_data) > 1024 * 1024: # 1 MiB limit
+            self.hex_view.setText("File content too long to display.\n(Comparison still performed on full file)")
+            return
+
         diff_set = set(diff_indices)
         
         # Using HTML for highlighting is much faster for large numbers of changes
@@ -211,10 +217,10 @@ class FileView(QWidget):
                     hex_val = f'{chunk[j]:02X}'
                     if byte_pos in diff_set:
                         hex_parts.append(f'<span style="background-color: red; color: white;">{hex_val}</span>')
-                        ascii_parts.append(f'<span style="background-color: red; color: white;">{chr(chunk[j]) if 32 <= chunk[j] <= 126 else "."}</span>')
+                        ascii_parts.append(f'<span style="background-color: red; color: white;">{html.escape(chr(chunk[j])) if 32 <= chunk[j] <= 126 else '🯄'}</span>')
                     else:
                         hex_parts.append(hex_val)
-                        ascii_parts.append(chr(chunk[j]) if 32 <= chunk[j] <= 126 else '.')
+                        ascii_parts.append(html.escape(chr(chunk[j])) if 32 <= chunk[j] <= 126 else '🯄')
                 else:
                     # This position doesn't exist in this file but might in the other.
                     # If it's a diff, it means the other file has extra bytes.
@@ -253,6 +259,11 @@ class FileView(QWidget):
             self.hex_view.setText("")
             return
 
+        # Limit display for very large files to prevent MemoryError
+        if len(self.file_data) > 1024 * 1024: # 1 MiB limit
+            self.hex_view.setText("File content too long to display.")
+            return
+
         if not show_content:
             self.hex_view.setText("Comparing...")
             return
@@ -266,8 +277,7 @@ class FileView(QWidget):
             hex_part = hex_representation.ljust(16 * 3 - 1)
 
             # ASCII part
-            ascii_part = ''.join(chr(byte) if 32 <= byte <= 126 else '.' for byte in chunk)
-
+            ascii_part = ''.join(chr(byte) if 32 <= byte <= 126 else '🯄' for byte in chunk)
             lines.append(f'{hex_part} | {ascii_part}')
         
         self.hex_view.setText('\n'.join(lines))
