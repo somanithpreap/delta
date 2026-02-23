@@ -1,4 +1,4 @@
-import sys, ctypes, os
+import sys, ctypes, os, mmap
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, 
                              QHBoxLayout, QVBoxLayout, QFrame, 
                              QLabel, QTabWidget, QLineEdit, QPushButton, QScrollArea)
