@@ -2,14 +2,36 @@ import sys, ctypes, os
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, 
                              QHBoxLayout, QVBoxLayout, QFrame, 
                              QLabel, QTabWidget, QLineEdit, QPushButton, QScrollArea)
-from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon, QPixmap, QPalette
+from PySide6.QtCore import Qt, QThread, QObject, Signal
 from qt_material import apply_stylesheet
 from pathlib import Path
 import hashlib
 
 # Components modules
 from components.hash_mode import DropZone
+from components.delta_mode import FileView, QSplitter
+
+class HashWorker(QObject):
+    finished = Signal(dict)
+
+    def __init__(self, file_path, algorithms):
+        super().__init__()
+        self.file_path = file_path
+        self.algorithms = algorithms
+
+    def run(self):
+        hashers = {algo: hashlib.new(algo) for algo in self.algorithms}
+        try:
+            with open(self.file_path, "rb") as f:
+                while byte_block := f.read(65536):
+                    for hasher in hashers.values():
+                        hasher.update(byte_block)
+            results = {algo: hasher.hexdigest() for algo, hasher in hashers.items()}
+            self.finished.emit(results)
+        except Exception as e:
+            results = {algo: f"Error: {e}" for algo in self.algorithms}
+            self.finished.emit(results)
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -25,7 +47,7 @@ class DeltaApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Delta — File Integrity Checker")
-        self.setMinimumSize(1000, 600)
+        self.setMinimumSize(1200, 800)
         self.setStyleSheet("background-color: #232629;")
 
         central_widget = QWidget()
@@ -97,7 +119,7 @@ class DeltaApp(QMainWindow):
             row_layout, output_box = self.create_hash_output(algo.upper() + ':')
             scroll_layout.addLayout(row_layout)
             self.hash_outputs[algo] = output_box
-        
+
         scroll_layout.addStretch()
         scroll_area.setWidget(scroll_content)
         hash_layout.addWidget(scroll_area)
@@ -109,14 +131,80 @@ class DeltaApp(QMainWindow):
 
         # --- DELTA PAGE ---
         delta_layout = QVBoxLayout(self.delta_page)
-        delta_placeholder = QLabel("Delta Mode is coming soon!")
-        delta_placeholder.setAlignment(Qt.AlignCenter)
-        delta_placeholder.setStyleSheet("font-size: 32px; color: #1de9b6;")
-        delta_layout.addWidget(delta_placeholder)
+        delta_layout.setContentsMargins(20, 20, 20, 20)
+
+        splitter = QSplitter(Qt.Vertical)
+        delta_layout.addWidget(splitter)
+
+        self.file1_view = FileView("File 1")
+        self.file2_view = FileView("File 2")
+
+        # Explicitly link the two views for comparison
+        self.file1_view.other_view = self.file2_view
+        self.file2_view.other_view = self.file1_view
+
+        splitter.addWidget(self.file1_view)
+        splitter.addWidget(self.file2_view)
+
+        self.compare_button = QPushButton("Compare Files")
+        self.compare_button.clicked.connect(self.start_comparison)
+        self.compare_button.setCursor(Qt.PointingHandCursor)
+        delta_layout.addWidget(self.compare_button)
+
+        # Connect the custom compare_files signal from FileView to a method in DeltaApp
+        self.file1_view.update_hashes_signal.connect(self.update_hash_colors)
+        self.file2_view.update_hashes_signal.connect(self.update_hash_colors)
 
         # Assemble
         main_layout.addWidget(self.sidebar)
         main_layout.addWidget(self.tabs)
+
+    def start_comparison(self):
+        # First, check if hashes are identical
+        hash1 = self.file1_view.hash_output.text()
+        hash2 = self.file2_view.hash_output.text()
+
+        if hash1 and hash2 and hash1 == hash2:
+            # Hashes match, no need for byte-by-byte comparison.
+            # Just ensure both views are displayed without diffs.
+            self.file1_view.display_hex()
+            self.file2_view.display_hex()
+            # Also update hash colors to show they match
+            self.update_hash_colors()
+            return
+
+        # If hashes don't match or one is missing, proceed with full comparison
+        if self.file1_view.file_data and self.file2_view.file_data:
+            self.file1_view.compare_and_highlight(self.file2_view.file_data)
+            self.file2_view.compare_and_highlight(self.file1_view.file_data)
+
+    def compare_files(self):
+        # This method is now primarily for updating hash colors after a file load.
+        # The main comparison is triggered by the button.
+        self.update_hash_colors()
+
+    def update_hash_colors(self):
+        # Compare hashes and update colors
+        hash1 = self.file1_view.hash_output.text()
+        hash2 = self.file2_view.hash_output.text()
+
+        primary_color = self.palette().color(QPalette.ColorRole.Highlight).name()
+        
+        default_stylesheet = f"padding: 5px; color: #aaa;"
+        match_stylesheet = f"padding: 5px; color: {primary_color};"
+        mismatch_stylesheet = "padding: 5px; color: red;"
+
+        if hash1 and hash2:
+            if hash1 == hash2:
+                self.file1_view.hash_output.setStyleSheet(match_stylesheet)
+                self.file2_view.hash_output.setStyleSheet(match_stylesheet)
+            else:
+                self.file1_view.hash_output.setStyleSheet(mismatch_stylesheet)
+                self.file2_view.hash_output.setStyleSheet(mismatch_stylesheet)
+        elif hash1:
+            self.file1_view.hash_output.setStyleSheet(default_stylesheet)
+        elif hash2:
+            self.file2_view.hash_output.setStyleSheet(default_stylesheet)
     
     def create_hash_output(self, hash_name):
         row_layout = QHBoxLayout()
@@ -147,26 +235,30 @@ class DeltaApp(QMainWindow):
         
         return row_layout, output_box
     
-    def calculate_hashes(self, file_path):
-        # Create a fresh dictionary of hasher objects for this file
-        hashers = {algo: hashlib.new(algo) for algo in self.supported_algorithms}
-        
-        try:
-            with open(file_path, "rb") as f:
-                # Read the file in 64KB chunks
-                for byte_block in iter(lambda: f.read(65536), b""):
-                    # Feed the chunk to every algorithm
-                    for hasher in hashers.values():
-                        hasher.update(byte_block)
-            
-            # Return a dictionary of the final string results
-            return {algo: hasher.hexdigest() for algo, hasher in hashers.items()}
-            
-        except Exception as e:
-            # If the file is locked or unreadable, return the error for all boxes
-            return {algo: f"Error: {str(e)}" for algo in self.supported_algorithms}
-    
     def process_file(self, file_path):
+        self.selected_file_label.setText(f"File: {file_path}")
+        for box in self.hash_outputs.values():
+            box.setText("Calculating...")
+        
+        self.thread = QThread()
+        self.worker = HashWorker(file_path, self.supported_algorithms)
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.update_hash_outputs)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.thread.start()
+
+    def update_hash_outputs(self, results):
+        for algo, result in results.items():
+            if algo in self.hash_outputs:
+                self.hash_outputs[algo].setText(result)
+        self.thread.quit()
+
+    def calculate_hashes(self, file_path):
+        # This method is now replaced by the HashWorker
+        pass
+
+    def process_file_old(self, file_path):
         self.selected_file_label.setText(f"File: {file_path}")
         # Update all UI boxes to show we are working
         for box in self.hash_outputs.values():
