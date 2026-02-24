@@ -276,23 +276,6 @@ class DeltaApp(QMainWindow):
                 self.hash_outputs[algo].setText(result)
         self.thread.quit()
 
-    def calculate_hashes(self, file_path):
-        # This method is now replaced by the HashWorker
-        pass
-
-    def process_file_old(self, file_path):
-        self.selected_file_label.setText(f"File: {file_path}")
-        # Update all UI boxes to show we are working
-        for box in self.hash_outputs.values():
-            box.setText("Calculating...")
-        
-        QApplication.processEvents() # Force UI refresh
-        
-        results = self.calculate_hashes(file_path)
-        
-        for algo, result in results.items():
-            self.hash_outputs[algo].setText(result)
-
 if __name__ == "__main__":
     # Set the taskbar icon on Windows
     if sys.platform == "win32":
